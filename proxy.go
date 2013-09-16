@@ -6,12 +6,12 @@ import (
 	"net"
 )
 
-func HandleConnection(conn net.Conn) {
+func handleConn(conn net.Conn) {
 	tunel, err := proxy.NewTunnel(conn)
-
-	if err == nil {
-		tunel.Forward()
+	if err != nil {
+		panic(err)
 	}
+	tunel.Forward()
 }
 
 func main() {
@@ -25,7 +25,7 @@ func main() {
 				break
 			}
 
-			go HandleConnection(conn)
+			go handleConn(conn)
 		}
 	}
 
