@@ -2,31 +2,25 @@ package proxy
 
 import (
 	"./socks"
-	"bufio"
+	"io"
 	"net"
 )
 
 type Tunnel struct {
-	Socks                     socks.ISocks
-	Local, Remote             net.Conn
-	LocalReader, RemoteReader *bufio.Reader
-	LocalWriter, RemoteWriter *bufio.Writer
-	close                     chan bool
+	Socks         socks.ISocks
+	Local, Remote net.Conn
+	close         chan bool
 }
 
 func NewTunnel(conn net.Conn) (tunnel *Tunnel, err error) {
 	tunnel = new(Tunnel)
 	tunnel.Local = conn
-	tunnel.LocalReader = bufio.NewReader(conn)
-	tunnel.LocalWriter = bufio.NewWriter(conn)
-
-	tunnel.close = make(chan bool)
-
+	tunnel.close = make(chan bool, 2)
 	tunnel.Socks = socks.NewSocks4()
 
-	if err = tunnel.Socks.Connect(tunnel.LocalReader); err == nil {
+	if err = tunnel.Socks.Connect(tunnel.Local); err == nil {
 		if err = tunnel.connectRemote(); err == nil {
-			tunnel.Socks.ConnectDone(tunnel.LocalWriter)
+			tunnel.Socks.ConnectDone(tunnel.Local)
 			return
 		}
 	}
@@ -34,15 +28,15 @@ func NewTunnel(conn net.Conn) (tunnel *Tunnel, err error) {
 }
 
 func (this *Tunnel) Forward() {
-	go this.exchange(this.LocalReader, this.RemoteWriter)
-	go this.exchange(this.RemoteReader, this.LocalWriter)
+	go this.exchange(this.Local, this.Remote)
+	go this.exchange(this.Remote, this.Local)
 	<-this.close
 	<-this.close
 	this.Local.Close()
 	this.Remote.Close()
 }
 
-func (this *Tunnel) exchange(reader *bufio.Reader, writer *bufio.Writer) {
+func (this *Tunnel) exchange(reader io.Reader, writer io.Writer) {
 	buffer := make([]byte, 4000)
 	n := 0
 	var err error
@@ -55,10 +49,7 @@ func (this *Tunnel) exchange(reader *bufio.Reader, writer *bufio.Writer) {
 		bytes := buffer[:n] // evil people can modify this or sniff
 
 		writer.Write(bytes)
-		writer.Flush()
-		if n == 3 && string(bytes[0:3]) == "EOF" {
-			break
-		}
+		//writer.Flush()
 	}
 	this.close <- true
 }
@@ -70,7 +61,7 @@ func (this *Tunnel) connectRemote() error {
 	}
 
 	this.Remote = remote
-	this.RemoteReader = bufio.NewReader(this.Remote)
-	this.RemoteWriter = bufio.NewWriter(this.Remote)
+	//this.RemoteReader = bufio.NewReader(this.Remote)
+	//this.RemoteWriter = bufio.NewWriter(this.Remote)
 	return nil
 }

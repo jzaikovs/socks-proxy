@@ -1,11 +1,11 @@
 package socks
 
 import (
-	"bufio"
+	"io"
 )
 
 type ISocks interface {
-	Connect(reader *bufio.Reader) error
-	ConnectDone(writer *bufio.Writer)
+	Connect(reader io.Reader) error
+	ConnectDone(writer io.Writer)
 	RemoteAddr() string
 }
