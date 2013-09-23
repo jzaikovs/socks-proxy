@@ -2,66 +2,51 @@ package proxy
 
 import (
 	"./socks"
+	//"fmt"
 	"io"
 	"net"
 )
 
-type Tunnel struct {
-	Socks         socks.ISocks
+type tunnel struct {
 	Local, Remote net.Conn
-	close         chan bool
 }
 
-func NewTunnel(conn net.Conn) (tunnel *Tunnel, err error) {
-	tunnel = new(Tunnel)
-	tunnel.Local = conn
-	tunnel.close = make(chan bool, 2)
-	tunnel.Socks = socks.NewSocks4()
+func (this tunnel) forward() {
+	for {
+		n, err := io.Copy(this.Remote, this.Local)
+		if err != nil || n == 0 {
+			break
+		}
+	}
+	this.Local.Close()
+}
 
-	if err = tunnel.Socks.Connect(tunnel.Local); err == nil {
-		if err = tunnel.connectRemote(); err == nil {
-			tunnel.Socks.ConnectDone(tunnel.Local)
+func handle(local net.Conn) (err error) {
+	//fmt.Println(local.LocalAddr(), " -> ", local.RemoteAddr())
+	sock := socks.NewSocks4()
+	if err = sock.Connect(local); err != nil {
+		return
+	}
+	var remote net.Conn
+	if remote, err = net.Dial("tcp", sock.RemoteAddr()); err != nil {
+		return
+	}
+	sock.ConnectDone(local)
+	go (tunnel{local, remote}).forward()
+	(tunnel{remote, local}).forward()
+	return
+}
+
+func Listen(network, laddr string) (l net.Listener, err error) {
+	if l, err = net.Listen(network, laddr); err != nil {
+		return
+	}
+	var conn net.Conn
+	for {
+		if conn, err = l.Accept(); err != nil {
+			l.Close()
 			return
 		}
+		go handle(conn)
 	}
-	return nil, err
-}
-
-func (this *Tunnel) Forward() {
-	go this.exchange(this.Local, this.Remote)
-	go this.exchange(this.Remote, this.Local)
-	<-this.close
-	<-this.close
-	this.Local.Close()
-	this.Remote.Close()
-}
-
-func (this *Tunnel) exchange(reader io.Reader, writer io.Writer) {
-	buffer := make([]byte, 4000)
-	n := 0
-	var err error
-	for {
-		if n, err = reader.Read(buffer); err != nil {
-			break
-		} else if n == 0 {
-			continue //TODO: add some waiting?
-		}
-		bytes := buffer[:n] // evil people can modify this or sniff
-
-		writer.Write(bytes)
-		//writer.Flush()
-	}
-	this.close <- true
-}
-
-func (this *Tunnel) connectRemote() error {
-	remote, err := net.Dial("tcp", this.Socks.RemoteAddr())
-	if err != nil {
-		return err
-	}
-
-	this.Remote = remote
-	//this.RemoteReader = bufio.NewReader(this.Remote)
-	//this.RemoteWriter = bufio.NewWriter(this.Remote)
-	return nil
 }
