@@ -1,9 +1,9 @@
 package proxy
 
 import (
-	"./socks"
-	//"fmt"
+	"github.com/jzaikovs/socks-proxy/socks"
 	"io"
+	"log"
 	"net"
 )
 
@@ -22,7 +22,6 @@ func (this tunnel) forward() {
 }
 
 func handle(local net.Conn) (err error) {
-	//fmt.Println(local.LocalAddr(), " -> ", local.RemoteAddr())
 	sock := socks.NewSocks4()
 	if err = sock.Connect(local); err != nil {
 		return
@@ -39,6 +38,7 @@ func handle(local net.Conn) (err error) {
 
 func Listen(network, laddr string) (l net.Listener, err error) {
 	if l, err = net.Listen(network, laddr); err != nil {
+		log.Panicln(err)
 		return
 	}
 	var conn net.Conn
@@ -49,4 +49,30 @@ func Listen(network, laddr string) (l net.Listener, err error) {
 		}
 		go handle(conn)
 	}
+}
+
+func Forward(target string, listen_on_port int) (l net.Listener, err error) {
+	if l, err = net.ListenTCP("tcp", &net.TCPAddr{Port: listen_on_port}); err != nil {
+		log.Panicln(err)
+		return
+	}
+	var conn net.Conn
+	for {
+		if conn, err = l.Accept(); err != nil {
+			l.Close()
+			return
+		}
+		go forwarder(target, conn)
+	}
+}
+
+func forwarder(target string, local net.Conn) (err error) {
+	var remote net.Conn
+	if remote, err = net.Dial("tcp", target); err != nil {
+		return
+	}
+
+	go (tunnel{local, remote}).forward()
+	(tunnel{remote, local}).forward()
+	return
 }
