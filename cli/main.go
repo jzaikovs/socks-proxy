@@ -6,8 +6,12 @@ import (
 )
 
 func main() {
-	h := flag.String("h", "127.0.0.1:80", "taget where to connect incomming connections")
+	h := flag.String("h", "", "taget where to connect incomming connections, if not passed then run in SOCK4 mode")
 	l := flag.Int("l", 443, "listening port")
 	flag.Parse()
-	proxy.Forward(*h, *l)
+	if len(*h) == 0 {
+		proxy.Listen(*l)
+	} else {
+		proxy.Forward(*h, *l)
+	}
 }

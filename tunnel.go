@@ -36,8 +36,8 @@ func handle(local net.Conn) (err error) {
 	return
 }
 
-func Listen(network, laddr string) (l net.Listener, err error) {
-	if l, err = net.Listen(network, laddr); err != nil {
+func Listen(listen_on_port int) (l net.Listener, err error) {
+	if l, err = net.ListenTCP("tcp", &net.TCPAddr{Port: listen_on_port}); err != nil {
 		log.Panicln(err)
 		return
 	}
